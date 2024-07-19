@@ -44,7 +44,7 @@ class LogFileHandler(FileSystemEventHandler):
     def is_heuristic_attack(self, log_entry):
         """
         Implement heuristic detection logic here.
-        Example: Detect repeated failed login attempts.
+        Example: Detect repeated failed login attempts, traversal, lateral attacks, and file uploads.
         """
         # Example pattern for a failed login attempt
         if 'failed login' in log_entry.lower():
@@ -53,14 +53,69 @@ class LogFileHandler(FileSystemEventHandler):
             if self.failed_attempts[ip_address] > 5:  # Threshold for failed attempts
                 return True
         
-        # Add more heuristic checks here
+        # Detect suspicious activity
         if 'suspicious activity' in log_entry.lower():
             return True
         
-        # Example of checking for unusual access times
+        # Detect unusual access times
         if 'accessed at unusual time' in log_entry.lower():
             return True
+        
+        # Detect directory traversal attack patterns
+        if self.is_traversal_attack(log_entry):
+            return True
+        
+        # Detect lateral movement attack patterns
+        if self.is_lateral_attack(log_entry):
+            return True
+        
+        # Detect file upload patterns
+        if self.is_file_upload(log_entry):
+            return True
 
+        return False
+
+    def is_traversal_attack(self, log_entry):
+        """
+        Detect directory traversal attack patterns.
+        """
+        traversal_patterns = ['../', '..\\', '%2e%2e%2f', '%2e%2e%5c', '..%c0%af', '..%c1%9c']
+        for pattern in traversal_patterns:
+            if pattern in log_entry.lower():
+                return True
+        return False
+
+    def is_lateral_attack(self, log_entry):
+        """
+        Detect lateral movement attack patterns.
+        """
+        lateral_patterns = [
+            'remote desktop protocol (rdp)',
+            'smb',
+            'ps exec',
+            'powershell remoting',
+            'wmi',
+            'admin$',
+            'c$'
+        ]
+        for pattern in lateral_patterns:
+            if pattern in log_entry.lower():
+                return True
+        return False
+
+    def is_file_upload(self, log_entry):
+        """
+        Detect file upload patterns.
+        """
+        upload_patterns = [
+            'file uploaded',
+            'upload complete',
+            'uploaded successfully',
+            'file transfer'
+        ]
+        for pattern in upload_patterns:
+            if pattern in log_entry.lower():
+                return True
         return False
 
     def extract_ip(self, log_entry):
