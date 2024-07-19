@@ -1,19 +1,19 @@
-This script monitors a specified log file in real-time, analyzes log entries for heuristic attack patterns, and sends alerts to a Telegram bot. It uses the watchdog library to detect changes in the log file and the python-telegram-bot library to send messages to Telegram.
+This Python script monitors a specified log file in real-time to detect heuristic, traversal, lateral attacks, and file uploads. When such events are detected, the script sends alerts to a specified Telegram chat. The script uses the watchdog library to monitor file changes and the python-telegram-bot library to send Telegram messages.
 Prerequisites
 
-    Python: Ensure you have Python installed on your system.
-    Telegram Bot: Create a Telegram bot by talking to BotFather on Telegram and obtain the bot token. Also, get your chat ID by sending a message to your bot or using a tool like IDBot.
+    Python: Ensure Python is installed on your system.
+    Telegram Bot: Create a Telegram bot via BotFather on Telegram and obtain the bot token. Obtain your chat ID by sending a message to your bot or using a tool like IDBot.
     Dependencies: Install the required Python packages using pip:
 
     bash
 
 pip install python-telegram-bot watchdog
 
-Script Components
+Explanation of the Script
 
     Imports and Logging:
-        Import necessary libraries.
-        Set up logging for monitoring script activity.
+        Import necessary libraries (os, time, logging, watchdog, telegram, collections).
+        Set up logging to monitor script activity.
 
     Telegram Bot Configuration:
         Configure the Telegram bot with your bot token and chat ID.
@@ -23,7 +23,16 @@ Script Components
         LogFileHandler class monitors changes to the log file.
         on_modified method checks for new log entries when the file is modified.
         analyze_log method analyzes new log entries for heuristic attack patterns.
-        is_heuristic_attack method contains heuristic detection logic (e.g., detecting repeated failed login attempts).
+        is_heuristic_attack method contains heuristic detection logic for:
+            Failed login attempts
+            Suspicious activity
+            Unusual access times
+            Directory traversal attacks
+            Lateral movement attacks
+            File uploads
+        is_traversal_attack method detects directory traversal attack patterns.
+        is_lateral_attack method detects lateral movement attack patterns.
+        is_file_upload method detects file upload patterns.
         extract_ip method extracts IP addresses from log entries using a regular expression.
 
     Observer Setup:
@@ -50,8 +59,10 @@ Usage
 Customization
 
     Heuristic Detection:
-        Modify the is_heuristic_attack method to add more sophisticated detection patterns based on your log file format and specific attack signatures.
+        Modify the is_heuristic_attack, is_traversal_attack, is_lateral_attack, and is_file_upload methods to add more sophisticated detection patterns based on your log file format and specific attack signatures.
         Adjust the threshold for failed login attempts or add more checks for different types of suspicious activities.
 
     Logging:
         Enhance logging to provide more detailed insights into the detection process and script performance.
+
+By following these steps and using the provided script, you can effectively monitor your log files in real-time, detect heuristic, traversal, lateral attacks, and file uploads, and receive timely alerts via Telegram.
