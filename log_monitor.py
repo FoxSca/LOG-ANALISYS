@@ -24,6 +24,7 @@ class LogFileHandler(FileSystemEventHandler):
         self.log_file = log_file
         self.log_file_size = os.path.getsize(self.log_file)
         self.failed_attempts = defaultdict(int)
+        self.suspicious_ips = defaultdict(int)
 
     def on_modified(self, event):
         if event.src_path == self.log_file:
@@ -37,9 +38,13 @@ class LogFileHandler(FileSystemEventHandler):
 
     def analyze_log(self, new_lines):
         for line in new_lines.split('\n'):
-            if self.is_heuristic_attack(line):
-                logger.info(f'Heuristic attack detected: {line}')
-                send_telegram_message(f'Heuristic attack detected: {line}')
+            if line:
+                if self.is_heuristic_attack(line):
+                    ip_address = self.extract_ip(line)
+                    if ip_address:
+                        self.suspicious_ips[ip_address] += 1
+                        logger.info(f'Heuristic attack detected from IP {ip_address}: {line}')
+                        send_telegram_message(f'Heuristic attack detected from IP {ip_address}: {line}')
 
     def is_heuristic_attack(self, log_entry):
         """
@@ -49,9 +54,10 @@ class LogFileHandler(FileSystemEventHandler):
         # Example pattern for a failed login attempt
         if 'failed login' in log_entry.lower():
             ip_address = self.extract_ip(log_entry)
-            self.failed_attempts[ip_address] += 1
-            if self.failed_attempts[ip_address] > 5:  # Threshold for failed attempts
-                return True
+            if ip_address:
+                self.failed_attempts[ip_address] += 1
+                if self.failed_attempts[ip_address] > 5:  # Threshold for failed attempts
+                    return True
         
         # Detect suspicious activity
         if 'suspicious activity' in log_entry.lower():
