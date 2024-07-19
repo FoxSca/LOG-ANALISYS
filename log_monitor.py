@@ -6,6 +6,9 @@ from watchdog.events import FileSystemEventHandler
 from telegram import Bot
 from collections import defaultdict
 
+# Author: Fabio Scardino
+# Description: This script monitors a log file for suspicious activities and sends alerts via Telegram.
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
