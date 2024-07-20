@@ -1,55 +1,83 @@
- Log Monitoring and Alert Script
+Description and Usage Guide
+Overview
 
-Purpose:
-The script is designed to monitor a specific log file for suspicious activities and automatically send alerts via Telegram when such activities are detected. It leverages the watchdog library to watch for changes in the log file and performs heuristic analysis to identify potential security threats.
+This script is designed to monitor a log file for suspicious activities and send alerts via multiple channels, including Telegram, MISP (Malware Information Sharing Platform), Elasticsearch, and OpenCTI (Open Cyber Threat Intelligence). The script is particularly useful for cybersecurity professionals who want to keep track of potential threats and respond promptly.
+Features
 
-Components and Functionality:
+    Log Monitoring: Continuously monitors a specified log file for changes.
+    Heuristic Analysis: Identifies potential security threats based on predefined heuristic patterns.
+    Multi-Channel Alerting: Sends alerts through Telegram, MISP, Elasticsearch, and OpenCTI.
+    Customizable Detection: Uses pattern files for detecting directory traversal, lateral movement, and file uploads.
 
-    Logging Setup:
-        Configures logging to track script operations and errors.
-        Logs are output with timestamps and messages to facilitate debugging and monitoring.
+Pattern Files
 
-    Telegram Configuration:
-        Uses the telegram library to set up a bot for sending notifications.
-        The bot token and chat ID are used to send messages to a specific Telegram chat when suspicious activities are detected.
+The script uses pattern files to detect specific types of suspicious activities. These files should be placed in the same directory as the script.
+1. traversal_patterns.txt
 
-    File Monitoring:
-        Utilizes the watchdog library to observe changes in the specified log file.
-        Monitors the log file for any modifications and reads new entries that are appended to the file.
+Contains patterns to detect directory traversal attacks. Examples include:
 
-    Log File Handler:
-        LogFileHandler is a custom event handler that extends FileSystemEventHandler from the watchdog library.
-        The on_modified method is triggered when the log file is updated. It reads new log entries and analyzes them for suspicious activities.
+    ../
+    ..\\
+    %2e%2e%2f
 
-    Heuristic Attack Detection:
-        The script implements several heuristic methods to identify potential attacks:
-            Failed Login Attempts: Detects repeated failed login attempts from the same IP address. If the threshold of failed attempts is exceeded, it triggers an alert.
-            Suspicious Activity: Identifies general suspicious activities based on predefined patterns in the log entries.
-            Unusual Access Times: Flags entries that indicate access at unusual times.
-            Directory Traversal Attacks: Detects patterns associated with directory traversal attacks.
-            Lateral Movement Attacks: Identifies patterns related to lateral movement within a network.
-            File Upload Patterns: Detects log entries indicating file uploads.
+2. lateral_patterns.txt
 
-    Alert Notification:
-        When a heuristic attack is detected, the script extracts the IP address (if available) and sends a detailed alert message via Telegram.
-        The alert includes the detected activity and the relevant log entry for further investigation.
+Contains patterns to detect lateral movement activities within a network. Examples include:
 
-    Error Handling:
-        Handles potential errors when reading the log file or sending Telegram messages, logging them for troubleshooting.
+    remote desktop protocol (rdp)
+    smb
+    ps exec
 
-    Execution:
-        The script starts by setting the path to the log file and initializing the LogFileHandler.
-        It then starts the Observer to monitor the log file for changes.
-        The script runs indefinitely, continuously monitoring the file and sending alerts as necessary.
-        The observer can be stopped gracefully using a keyboard interrupt (Ctrl+C), after which it joins the thread to clean up resources.
+3. upload_patterns.txt
 
-Usage:
+Contains patterns to detect file upload activities. Examples include:
 
-    Replace 'your_telegram_bot_token' and 'your_chat_id' with actual values for the Telegram bot token and chat ID.
-    Set the path to the log file in log_file_path.
-    Ensure the necessary libraries (watchdog, telegram, etc.) are installed and available in your environment.
+    file uploaded
+    upload complete
+    uploaded successfully
 
-Security Considerations:
+Configuration
 
-    Ensure that sensitive information such as Telegram bot tokens is kept secure and not hard-coded in the script for production use.
-    Validate and sanitize log entries and patterns to avoid false positives and ensure accurate detection.
+    Configuration File (config.ini):
+        Telegram: TOKEN and CHAT_ID
+        MISP: URL, API_KEY, and VERIFY_SSL
+        Elasticsearch: HOST, PORT, and INDEX_NAME
+        OpenCTI: URL and API_KEY
+
+    Install Required Libraries:
+    Ensure you have the following Python packages installed:
+        watchdog
+        python-telegram-bot
+        requests
+        elasticsearch
+        configparser
+
+Usage
+
+    Prepare Configuration:
+        Edit config.ini with your service credentials and settings.
+
+    Prepare Pattern Files:
+        Create traversal_patterns.txt, lateral_patterns.txt, and upload_patterns.txt with the respective patterns.
+
+    Run the Script:
+    Use the command line to run the script. Example:
+
+    bash
+
+    python monitor_logs.py path_to_your_log_file.log --destinations telegram misp elasticsearch opencti
+
+        path_to_your_log_file.log: Path to the log file you want to monitor.
+        --destinations: Specify the destinations where alerts should be sent (options: telegram, misp, elasticsearch, opencti).
+
+    Monitor Alerts:
+        Telegram: Alerts will be sent as messages to your specified chat.
+        MISP: Alerts will be sent as events in MISP.
+        Elasticsearch: Alerts will be indexed in Elasticsearch.
+        OpenCTI: Alerts will be sent as indicators in OpenCTI.
+
+Important Notes
+
+    Ensure you have appropriate permissions and credentials for the services you are integrating with.
+    Regularly update your pattern files to reflect new threat intelligence.
+    Adjust heuristic detection logic as needed to fit your specific environment and requirements.
