@@ -1,0 +1,7 @@
+remote desktop protocol (rdp)
+smb
+ps exec
+powershell remoting
+wmi
+admin$
+c$
