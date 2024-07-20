@@ -1,33 +1,140 @@
 import os
 import time
 import logging
+import argparse
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from telegram import Bot
 from collections import defaultdict
+import requests
+import json
+from elasticsearch import Elasticsearch
+import re
+import configparser
 
 # Author: Fabio Scardino
-# Description: This script monitors a log file for suspicious activities and sends alerts via Telegram.
+# Description: This script monitors a log file for suspicious activities and sends alerts via Telegram, MISP, Elasticsearch, and OpenCTI.
+
+# Configuration setup
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Telegram configuration
-TELEGRAM_TOKEN = 'your_telegram_bot_token'
-CHAT_ID = 'your_chat_id'
+TELEGRAM_TOKEN = config['TELEGRAM']['TOKEN']
+CHAT_ID = config['TELEGRAM']['CHAT_ID']
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
 def send_telegram_message(message):
-    bot.send_message(chat_id=CHAT_ID, text=message)
+    try:
+        bot.send_message(chat_id=CHAT_ID, text=message)
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
+
+# MISP configuration
+MISP_URL = config['MISP']['URL']
+MISP_API_KEY = config['MISP']['API_KEY']
+VERIFY_SSL = config['MISP'].getboolean('VERIFY_SSL')
+
+def send_misp_alert(event_data):
+    headers = {
+        'Authorization': MISP_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    response = requests.post(f'{MISP_URL}/events', headers=headers, data=json.dumps(event_data), verify=VERIFY_SSL)
+    
+    if response.status_code == 200:
+        logger.info("Alert successfully sent to MISP.")
+    else:
+        logger.error(f"Failed to send alert to MISP: {response.text}")
+
+def create_misp_event(message):
+    event = {
+        "Event": {
+            "info": "Suspicious activity detected",
+            "distribution": 0,
+            "threat_level_id": 3,
+            "analysis": 0,
+            "Attribute": [
+                {
+                    "type": "text",
+                    "category": "External analysis",
+                    "value": message
+                }
+            ]
+        }
+    }
+    return event
+
+def handle_misp_alert(message):
+    event_data = create_misp_event(message)
+    send_misp_alert(event_data)
+
+# Elasticsearch configuration
+ELASTICSEARCH_HOST = config['ELASTICSEARCH']['HOST']
+ELASTICSEARCH_PORT = config['ELASTICSEARCH'].getint('PORT')
+INDEX_NAME = config['ELASTICSEARCH']['INDEX_NAME']
+
+es = Elasticsearch([{'host': ELASTICSEARCH_HOST, 'port': ELASTICSEARCH_PORT}])
+
+def send_elasticsearch_alert(message):
+    doc = {
+        'message': message,
+        'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    }
+    response = es.index(index=INDEX_NAME, body=doc)
+    
+    if response['result'] == 'created':
+        logger.info("Alert successfully sent to Elasticsearch.")
+    else:
+        logger.error(f"Failed to send alert to Elasticsearch: {response}")
+
+def handle_elasticsearch_alert(message):
+    send_elasticsearch_alert(message)
+
+# OpenCTI configuration
+OPENCTI_URL = config['OPENCTI']['URL']
+OPENCTI_API_KEY = config['OPENCTI']['API_KEY']
+
+def send_opencti_alert(event_data):
+    headers = {
+        'Authorization': f'Bearer {OPENCTI_API_KEY}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    response = requests.post(f'{OPENCTI_URL}/api/indicators', headers=headers, data=json.dumps(event_data))
+    
+    if response.status_code == 200:
+        logger.info("Alert successfully sent to OpenCTI.")
+    else:
+        logger.error(f"Failed to send alert to OpenCTI: {response.text}")
+
+def create_opencti_event(message):
+    event = {
+        "name": "Suspicious activity detected",
+        "description": message,
+        "pattern_type": "stix",
+        "pattern": "[file:hashes.'SHA-256' = 'your-file-hash']",
+        "valid_from": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    }
+    return event
+
+def handle_opencti_alert(message):
+    event_data = create_opencti_event(message)
+    send_opencti_alert(event_data)
 
 class LogFileHandler(FileSystemEventHandler):
-    def __init__(self, log_file):
+    def __init__(self, log_file, destinations):
         self.log_file = log_file
         self.log_file_size = os.path.getsize(self.log_file)
         self.failed_attempts = defaultdict(int)
         self.suspicious_ips = defaultdict(int)
+        self.destinations = destinations
 
     def on_modified(self, event):
         if event.src_path == self.log_file:
@@ -46,8 +153,15 @@ class LogFileHandler(FileSystemEventHandler):
                     ip_address = self.extract_ip(line)
                     if ip_address:
                         self.suspicious_ips[ip_address] += 1
-                        logger.info(f'Heuristic attack detected from IP {ip_address}: {line}')
-                        send_telegram_message(f'Heuristic attack detected from IP {ip_address}: {line}')
+                        message = f'Heuristic attack detected from IP {ip_address}: {line}'
+                        logger.info(message)
+                        send_telegram_message(message)
+                        if 'misp' in self.destinations:
+                            handle_misp_alert(message)
+                        if 'elasticsearch' in self.destinations:
+                            handle_elasticsearch_alert(message)
+                        if 'opencti' in self.destinations:
+                            handle_opencti_alert(message)
 
     def is_heuristic_attack(self, log_entry):
         """
@@ -88,7 +202,7 @@ class LogFileHandler(FileSystemEventHandler):
         """
         Detect directory traversal attack patterns.
         """
-        traversal_patterns = ['../', '..\\', '%2e%2e%2f', '%2e%2e%5c', '..%c0%af', '..%c1%9c']
+        traversal_patterns = self.load_patterns('traversal_patterns.txt')
         for pattern in traversal_patterns:
             if pattern in log_entry.lower():
                 return True
@@ -98,15 +212,7 @@ class LogFileHandler(FileSystemEventHandler):
         """
         Detect lateral movement attack patterns.
         """
-        lateral_patterns = [
-            'remote desktop protocol (rdp)',
-            'smb',
-            'ps exec',
-            'powershell remoting',
-            'wmi',
-            'admin$',
-            'c$'
-        ]
+        lateral_patterns = self.load_patterns('lateral_patterns.txt')
         for pattern in lateral_patterns:
             if pattern in log_entry.lower():
                 return True
@@ -116,12 +222,7 @@ class LogFileHandler(FileSystemEventHandler):
         """
         Detect file upload patterns.
         """
-        upload_patterns = [
-            'file uploaded',
-            'upload complete',
-            'uploaded successfully',
-            'file transfer'
-        ]
+        upload_patterns = self.load_patterns('upload_patterns.txt')
         for pattern in upload_patterns:
             if pattern in log_entry.lower():
                 return True
@@ -132,19 +233,36 @@ class LogFileHandler(FileSystemEventHandler):
         Extract IP address from a log entry.
         Example implementation; adjust regex based on log format.
         """
-        import re
         ip_pattern = re.compile(r'[0-9]+(?:\.[0-9]+){3}')
         match = ip_pattern.search(log_entry)
         if match:
             return match.group(0)
         return None
 
+    def load_patterns(self, filename):
+        """
+        Load detection patterns from a file.
+        """
+        with open(filename, 'r') as f:
+            patterns = [line.strip() for line in f.readlines()]
+        return patterns
+
 if __name__ == "__main__":
-    log_file_path = 'path_to_your_log_file.log'
+    parser = argparse.ArgumentParser(description="Log file monitoring and alerting script")
+    parser.add_argument('--destinations', nargs='+', choices=['misp', 'elasticsearch', 'opencti', 'all'], default=['all'], 
+                        help="Specify destinations for alerts (default: all)")
+    parser.add_argument('--log_file', required=True, help="Path to the log file to monitor")
     
-    event_handler = LogFileHandler(log_file_path)
+    args = parser.parse_args()
+    
+    if 'all' in args.destinations:
+        destinations = ['misp', 'elasticsearch', 'opencti']
+    else:
+        destinations = args.destinations
+
+    event_handler = LogFileHandler(args.log_file, destinations)
     observer = Observer()
-    observer.schedule(event_handler, path=os.path.dirname(log_file_path), recursive=False)
+    observer.schedule(event_handler, path=os.path.dirname(args.log_file), recursive=False)
     observer.start()
 
     try:
