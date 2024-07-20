@@ -233,41 +233,4 @@ class LogFileHandler(FileSystemEventHandler):
         Extract IP address from a log entry.
         Example implementation; adjust regex based on log format.
         """
-        ip_pattern = re.compile(r'[0-9]+(?:\.[0-9]+){3}')
-        match = ip_pattern.search(log_entry)
-        if match:
-            return match.group(0)
-        return None
-
-    def load_patterns(self, filename):
-        """
-        Load detection patterns from a file.
-        """
-        with open(filename, 'r') as f:
-            patterns = [line.strip() for line in f.readlines()]
-        return patterns
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Log file monitoring and alerting script")
-    parser.add_argument('--destinations', nargs='+', choices=['misp', 'elasticsearch', 'opencti', 'all'], default=['all'], 
-                        help="Specify destinations for alerts (default: all)")
-    parser.add_argument('--log_file', required=True, help="Path to the log file to monitor")
-    
-    args = parser.parse_args()
-    
-    if 'all' in args.destinations:
-        destinations = ['misp', 'elasticsearch', 'opencti']
-    else:
-        destinations = args.destinations
-
-    event_handler = LogFileHandler(args.log_file, destinations)
-    observer = Observer()
-    observer.schedule(event_handler, path=os.path.dirname(args.log_file), recursive=False)
-    observer.start()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+        ip_pattern = re.compile(r
